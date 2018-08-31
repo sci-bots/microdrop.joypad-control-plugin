@@ -63,7 +63,7 @@ class JoypadControlPlugin(Plugin):
     plugin_name = 'microdrop.joypad_control_plugin'
 
     def __init__(self):
-        self.name = self.plugin_namet
+        self.name = self.plugin_name
         self._electrode_states = iter([])
         self.plugin = None
         self.signals = blinker.Namespace()
