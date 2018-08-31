@@ -75,12 +75,10 @@ class JoypadControlPlugin(Plugin):
     '''
     implements(IPlugin)
     version = __version__
-    plugin_name = 'microdrop.joypad_control_plugin'
+    plugin_name = 'joypad_control_plugin'
 
     def __init__(self):
         self.name = self.plugin_name
-        self._electrode_states = iter([])
-        self.plugin = None
         self.signals = blinker.Namespace()
         self.task = None
         self._most_recent_message = {}
