@@ -120,6 +120,28 @@ class JoypadControlPlugin(Plugin):
             elif message['buttons'] == {3: True}:
                 # Button 3 was pressed.
                 hub_execute_async('dropbot_plugin', 'find_liquid')
+            elif message['buttons'] == {4: True}:
+                # Button 4 was pressed.
+                if message['new']['button_states'][8]:
+                    # Button 8 was also held down.
+                    hub_execute_async('microdrop.gui.protocol_controller',
+                                      'first_step')
+                else:
+                    hub_execute_async('microdrop.gui.protocol_controller',
+                                      'prev_step')
+            elif message['buttons'] == {6: True}:
+                # Button 6 was pressed.
+                if message['new']['button_states'][8]:
+                    # Button 8 was also held down.
+                    hub_execute_async('microdrop.gui.protocol_controller',
+                                      'last_step')
+                else:
+                    hub_execute_async('microdrop.gui.protocol_controller',
+                                      'next_step')
+            elif message['buttons'] == {9: True}:
+                # Button 9 was pressed.
+                hub_execute_async('microdrop.gui.protocol_controller',
+                                  'run_protocol')
             elif all(message['buttons'].values()):
                 _L().info('%s', message)
 
