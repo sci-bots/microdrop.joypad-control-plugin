@@ -14,21 +14,18 @@ import deepdiff
 import trollius as asyncio
 
 from ._version import get_versions
-from .windows_joypad_interface import joyGetPos, joyGetDevCaps, get_state
+from .windows_joypad_interface import get_state
 
 
 @asyncio.coroutine
 def check_joypad(signals, joy_id, poll_interval=.001, settle_duration=.010, **kwargs):
-    caps = joyGetDevCaps(joy_id)
-    info = joyGetPos(joy_id)
-
     start = time.time()
     steady_state = {}
     cre_button = re.compile(r"root\['button_states'\]\[(?P<button>\d+)\]")
 
     while True:
         try:
-            new_state = get_state(joy_id, info=info, caps=caps)
+            new_state = get_state(joy_id)
         except IOError:
             continue
         now = time.time()
