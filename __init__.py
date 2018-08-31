@@ -8,9 +8,11 @@ from logging_helpers import _L
 from microdrop.interfaces import IPlugin
 from microdrop.plugin_helpers import hub_execute_async
 from microdrop.plugin_manager import PluginGlobals, Plugin, implements
+from zmq_plugin.schema import decode_content_data
 import asyncio_helpers as ah
 import blinker
 import deepdiff
+import pandas as pd
 import trollius as asyncio
 
 from ._version import get_versions
@@ -88,6 +90,8 @@ class JoypadControlPlugin(Plugin):
         self.task = ah.cancellable(check_joypad)
         self.signals.clear()
 
+        liquid_state = {}
+
         def _on_changed(message):
             self._most_recent_message = message
 
@@ -108,9 +112,24 @@ class JoypadControlPlugin(Plugin):
                     # Up.
                     direction = 'up'
 
-                hub_execute_async('microdrop.electrode_controller_plugin',
-                                  'set_electrode_direction_states',
-                                  direction=direction)
+                if all((direction in ('right', 'left'), liquid_state,
+                        message['new']['button_states'][3])):
+                    electrodes = liquid_state['electrodes']
+
+                    if 'i' in liquid_state:
+                        i = liquid_state['i'] + (1 if direction == 'right'
+                                                 else -1)
+                    else:
+                        i = (0 if direction == 'right'
+                             else len(electrodes) - 1)
+                    i = i % len(electrodes)
+                    hub_execute_async('dropbot_plugin', 'identify_electrode',
+                                      electrode_id=electrodes[i])
+                    liquid_state['i'] = i
+                else:
+                    hub_execute_async('microdrop.electrode_controller_plugin',
+                                      'set_electrode_direction_states',
+                                      direction=direction)
 
         def _on_buttons_changed(message):
             if message['buttons'] == {0: True}:
@@ -119,7 +138,29 @@ class JoypadControlPlugin(Plugin):
                                   'clear_electrode_states')
             elif message['buttons'] == {3: True}:
                 # Button 3 was pressed.
-                hub_execute_async('dropbot_plugin', 'find_liquid')
+                i = liquid_state.get('i')
+                liquid_state.clear()
+
+                def _on_found(zmq_response):
+                    data = decode_content_data(zmq_response)
+                    liquid_state['electrodes'] = data
+                    if i is not None and i < len(liquid_state['electrodes']):
+                        liquid_state['i'] = i
+
+                hub_execute_async('dropbot_plugin', 'find_liquid',
+                                  callback=_on_found)
+            elif message['buttons'] == {3: False}:
+                # Button 3 was released.
+                _L().info('Button 3 was released. `%s`', liquid_state)
+                i = liquid_state.get('i')
+                if i is not None:
+                    selected_electrode = liquid_state['electrodes'][i]
+                    electrode_states = pd.Series(1, index=[selected_electrode])
+                    hub_execute_async('microdrop.electrode_controller_plugin',
+                                      'clear_electrode_states')
+                    hub_execute_async('microdrop.electrode_controller_plugin',
+                                      'set_electrode_states',
+                                      electrode_states=electrode_states)
             elif message['buttons'] == {4: True}:
                 # Button 4 was pressed.
                 if message['new']['button_states'][8]:
