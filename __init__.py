@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import logging
+import re
 import time
 import threading
 
@@ -23,6 +24,7 @@ def check_joypad(signals, joy_id, poll_interval=.001, settle_duration=.010, **kw
 
     start = time.time()
     steady_state = {}
+    cre_button = re.compile(r"root\['button_states'\]\[(?P<button>\d+)\]")
 
     while True:
         try:
@@ -35,9 +37,25 @@ def check_joypad(signals, joy_id, poll_interval=.001, settle_duration=.010, **kw
         else:
             if (now - start) > settle_duration:
                 # State has stablized.
-                message = {'old': steady_state, 'new': new_state,
-                           'diff': deepdiff.DeepDiff(steady_state, new_state)}
-                signals.signal('state-changed').send(message)
+                diff = deepdiff.DeepDiff(steady_state, new_state)
+                message = {'old': steady_state, 'new': new_state, 'diff': diff}
+
+                try:
+                    signals.signal('state-changed').send(message)
+                    # Send `buttons-changed` signal if buttons have changed state.
+                    # `buttons` property is a dictionary of new button states
+                    # (i.e., `<new_value>`) keyed by button number (old value not
+                    # included because it is implied by the fact that a state
+                    # changed occurred and the value is boolean).
+                    buttons = {int(cre_button.match(k).group('button')):
+                               v['new_value']
+                            for k, v in diff.get('values_changed', {}).items()
+                            if cre_button.match(k)}
+                    if buttons:
+                        message['buttons'] = buttons
+                        signals.signal('buttons-changed').send(message)
+                except Exception:
+                    _L().info('Error sending signals.', exc_info=True)
                 steady_state = new_state
         yield asyncio.From(asyncio.sleep(poll_interval))
 
@@ -98,24 +116,21 @@ class JoypadControlPlugin(Plugin):
                 hub_execute_async('microdrop.electrode_controller_plugin',
                                   'set_electrode_direction_states',
                                   direction=direction)
-            elif message['diff'] == {'values_changed':
-                                     {"root['button_states'][0]":
-                                      {'new_value': True,
-                                       'old_value': False}}}:
-                _L().info('Button 0 was pressed.')
+
+        def _on_buttons_changed(message):
+            if message['buttons'] == {0: True}:
+                # Button 0 was pressed.
                 hub_execute_async('microdrop.electrode_controller_plugin',
                                   'clear_electrode_states')
-            elif message['diff'] == {'values_changed':
-                                     {"root['button_states'][3]":
-                                      {'new_value': True,
-                                       'old_value': False}}}:
-                _L().info('Button 3 was pressed.')
+            elif message['buttons'] == {3: True}:
+                # Button 3 was pressed.
                 hub_execute_async('dropbot_plugin', 'find_liquid')
-            else:
+            elif all(message['buttons'].values()):
                 _L().info('%s', message)
 
-
         self.signals.signal('state-changed').connect(_on_changed, weak=False)
+        self.signals.signal('buttons-changed').connect(_on_buttons_changed,
+                                                       weak=False)
         thread = threading.Thread(target=self.task, args=(self.signals, 0))
         thread.daemon = True
         thread.start()
