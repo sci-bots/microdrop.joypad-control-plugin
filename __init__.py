@@ -170,8 +170,8 @@ class JoypadControlPlugin(Plugin):
                 else:
                     hub_execute_async('microdrop.gui.protocol_controller',
                                       'prev_step')
-            elif message['buttons'] == {6: True}:
-                # Button 6 was pressed.
+            elif message['buttons'] == {5: True}:
+                # Button 5 was pressed.
                 if message['new']['button_states'][8]:
                     # Button 8 was also held down.
                     hub_execute_async('microdrop.gui.protocol_controller',
